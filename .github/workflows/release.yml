@@ -7,6 +7,8 @@ jobs:
 
   build-release:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
       - name: get latest go 1.26 version
         id: go
