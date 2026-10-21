@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -34,7 +35,6 @@ import (
 	"github.com/miekg/dns"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
-	"gitlab.com/go-extension/http"
 	eTLS "gitlab.com/go-extension/tls"
 	"go.uber.org/zap"
 
@@ -46,6 +46,7 @@ import (
 	mQUIC "github.com/pmkol/mosdns-x/pkg/upstream/quic"
 	"github.com/pmkol/mosdns-x/pkg/upstream/transport"
 	"github.com/pmkol/mosdns-x/pkg/upstream/udp"
+	"github.com/pmkol/mosdns-x/pkg/utils"
 )
 
 // Upstream represents a DNS upstream.
@@ -264,7 +265,8 @@ func NewUpstream(addr string, opt *Opt) (Upstream, error) {
 					tlsConn.Close()
 					return nil, err
 				}
-				return tlsConn, nil
+				// Exposes crypto/tls.ConnectionState so that net/http negotiates h2.
+				return tlsConn.Compatible(), nil
 			},
 			IdleConnTimeout:   idleConnTimeout,
 			ForceAttemptHTTP2: true,
@@ -317,8 +319,7 @@ func createTLSConfig(opt *Opt, alpn string, serverName string) *tls.Config {
 
 func createETLSConfig(opt *Opt, alpn string, serverName string) *eTLS.Config {
 	config := &eTLS.Config{
-		KernelTX:           opt.KernelTX,
-		KernelRX:           opt.KernelRX,
+		KernelOptions:      utils.KernelTLSOptions(opt.KernelTX, opt.KernelRX),
 		InsecureSkipVerify: opt.Insecure,
 		RootCAs:            opt.RootCAs,
 		NextProtos:         []string{alpn},

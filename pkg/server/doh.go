@@ -20,15 +20,11 @@
 package server
 
 import (
-	"context"
-	"io"
 	"net"
-	"net/url"
+	"net/http"
 	"time"
 
-	"gitlab.com/go-extension/http"
-
-	H "github.com/pmkol/mosdns-x/pkg/server/http_handler"
+	eTLS "gitlab.com/go-extension/tls"
 )
 
 func (s *Server) ServeHTTP(l net.Listener) error {
@@ -44,7 +40,7 @@ func (s *Server) ServeHTTP(l net.Listener) error {
 	}
 
 	hs := &http.Server{
-		Handler:           &eHandler{s.opts.HttpHandler},
+		Handler:           &sHandler{s.opts.HttpHandler},
 		ReadHeaderTimeout: time.Millisecond * 500,
 		ReadTimeout:       idleTimeout,
 		IdleTimeout:       idleTimeout,
@@ -55,7 +51,7 @@ func (s *Server) ServeHTTP(l net.Listener) error {
 	}
 	defer s.trackCloser(hs, false)
 
-	err := hs.Serve(l)
+	err := hs.Serve(compatibleListener{l})
 	if err == http.ErrServerClosed { // Replace http.ErrServerClosed with our ErrServerClosed
 		return ErrServerClosed
 	} else if err != nil {
@@ -64,74 +60,16 @@ func (s *Server) ServeHTTP(l net.Listener) error {
 	return nil
 }
 
-type eHandler struct {
-	h *H.Handler
+// compatibleListener exposes crypto/tls.ConnectionState of eTLS conns,
+// so that net/http serves them as TLS and negotiates h2.
+type compatibleListener struct {
+	net.Listener
 }
 
-func (h *eHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.h.ServeHTTP(&eWriter{w}, &eRequest{r})
-}
-
-type eRequest struct {
-	r *http.Request
-}
-
-func (r *eRequest) URL() *url.URL {
-	return r.r.URL
-}
-
-func (r *eRequest) TLS() *H.TlsInfo {
-	if r.r.TLS == nil {
-		return nil
-	} else {
-		return &H.TlsInfo{
-			Version:            r.r.TLS.Version,
-			ServerName:         r.r.TLS.ServerName,
-			NegotiatedProtocol: r.r.TLS.NegotiatedProtocol,
-		}
+func (l compatibleListener) Accept() (net.Conn, error) {
+	c, err := l.Listener.Accept()
+	if tc, ok := c.(*eTLS.Conn); ok {
+		return tc.Compatible(), nil
 	}
-}
-
-func (r *eRequest) Body() io.ReadCloser {
-	return r.r.Body
-}
-
-func (r *eRequest) Header() H.Header {
-	return r.r.Header
-}
-
-func (r *eRequest) Method() string {
-	return r.r.Method
-}
-
-func (r *eRequest) Context() context.Context {
-	return r.r.Context()
-}
-
-func (r *eRequest) RequestURI() string {
-	return r.r.RequestURI
-}
-
-func (r *eRequest) GetRemoteAddr() string {
-	return r.r.RemoteAddr
-}
-
-func (r *eRequest) SetRemoteAddr(addr string) {
-	r.r.RemoteAddr = addr
-}
-
-type eWriter struct {
-	w http.ResponseWriter
-}
-
-func (w *eWriter) Header() H.Header {
-	return w.w.Header()
-}
-
-func (w *eWriter) Write(b []byte) (int, error) {
-	return w.w.Write(b)
-}
-
-func (w *eWriter) WriteHeader(statusCode int) {
-	w.w.WriteHeader(statusCode)
+	return c, err
 }

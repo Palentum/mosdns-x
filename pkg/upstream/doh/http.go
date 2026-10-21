@@ -23,11 +23,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 
 	"github.com/miekg/dns"
-	"gitlab.com/go-extension/http"
 
 	C "github.com/pmkol/mosdns-x/constant"
 	"github.com/pmkol/mosdns-x/pkg/pool"
